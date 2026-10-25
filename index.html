@@ -2,7 +2,7 @@
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>QUICKDRAW - Beta</title>
-<link rel="icon" href="data:,">
+<link rel="icon" href="favicon.ico">
 <style>
 *{box-sizing:border-box}html,body{margin:0;background:linear-gradient(#2d4a73,#e8a46a 55%,#7a4a2a);height:100%;overflow:hidden;background:#000;font-family:Rockwell,Georgia,serif;user-select:none;-webkit-user-select:none;touch-action:manipulation}
 #c{position:fixed;inset:0;width:100%;height:100%;display:block}
@@ -39,29 +39,33 @@ kbd{font:inherit;padding:2px 14px;border-radius:5px;background:linear-gradient(#
 <div id="msg" class="ov"><div id="big"></div><div id="sub"></div><div id="hint"><kbd id="key">SPACE</kbd><span id="lab">DRAW</span></div></div>
 <button id="snd" class="ov" aria-label="Toggle sound">Sound: On</button>
 <script>
+const SAFE=/[?&]safe/.test(location.search);let sw_=0;
+function goSafe(why){if(sw_)return;sw_=1;if(SAFE){showErr('Safe mode also failed: '+why);return}showErr('Graphics problem ('+why+'). Switching to safe mode...');setTimeout(()=>{location.search='?safe'},700)}
+const ce_=console.error;console.error=function(){try{if(/WebGL|shader|program/i.test([].join.call(arguments,' ')))goSafe('graphics error')}catch(e){}ce_.apply(console,arguments)};
 function showErr(m){const e=document.getElementById('err');e.style.display='block';e.textContent+=m+'\n'}
 addEventListener('error',e=>showErr('Error: '+(e.message||'script error')+(e.lineno?' (line '+e.lineno+')':'')));
 addEventListener('unhandledrejection',e=>showErr('Error: '+(e.reason&&e.reason.message||e.reason)));
 function boot(){
 const $=q=>document.querySelector(q),V=(x,y,z)=>new THREE.Vector3(x,y,z),rnd=Math.random;
-let R;try{R=new THREE.WebGLRenderer({canvas:$('#c'),antialias:true})}catch(e){showErr('WebGL is not available in this browser: '+e.message);return}
-R.setPixelRatio(Math.min(devicePixelRatio,2));
-R.shadowMap.enabled=true;R.shadowMap.type=THREE.PCFSoftShadowMap;R.toneMapping=THREE.ACESFilmicToneMapping;R.toneMappingExposure=1.15;R.outputEncoding=THREE.sRGBEncoding;
+let R;try{R=new THREE.WebGLRenderer({canvas:$('#c'),antialias:!SAFE})}catch(e){goSafe('no WebGL: '+e.message);return}
+$('#c').addEventListener('webglcontextlost',e=>{e.preventDefault();goSafe('context lost')});
+R.setPixelRatio(SAFE?1:Math.min(devicePixelRatio,2));
+R.shadowMap.enabled=!SAFE;R.shadowMap.type=THREE.PCFSoftShadowMap;R.toneMapping=SAFE?0:THREE.ACESFilmicToneMapping;R.toneMappingExposure=1.15;R.outputEncoding=THREE.sRGBEncoding;
 const S=new THREE.Scene(),cam=new THREE.PerspectiveCamera(65,1,.02,400);cam.position.set(0,1.65,0);S.add(cam);
 function ctex(w,h,f,rep){const c=document.createElement('canvas');c.width=w;c.height=h;f(c.getContext('2d'));const t=new THREE.CanvasTexture(c);t.encoding=THREE.sRGBEncoding;if(rep){t.wrapS=t.wrapT=THREE.RepeatWrapping;t.repeat.set(rep,rep)}return t}
-S.background=ctex(2,256,g=>{const l=g.createLinearGradient(0,0,0,256);[[0,'#2d4a73'],[.5,'#e8a46a'],[.72,'#f6c98a'],[1,'#d9955f']].forEach(s=>l.addColorStop(...s));g.fillStyle=l;g.fillRect(0,0,2,256)});
+S.background=SAFE?new THREE.Color(0xe8a46a):ctex(2,256,g=>{const l=g.createLinearGradient(0,0,0,256);[[0,'#2d4a73'],[.5,'#e8a46a'],[.72,'#f6c98a'],[1,'#d9955f']].forEach(s=>l.addColorStop(...s));g.fillStyle=l;g.fillRect(0,0,2,256)});
 S.fog=new THREE.Fog(0xe3a874,30,260);
-const M=(c,o={})=>new THREE.MeshStandardMaterial(Object.assign({color:c,roughness:.9},o));
+const SM=SAFE?THREE.MeshLambertMaterial:THREE.MeshStandardMaterial,M=(c,o={})=>SAFE?new SM({color:c,map:o.map||null}):new SM(Object.assign({color:c,roughness:.9},o));
 const box=(w,h,d,m,x,y,z,p,sh=true)=>{const o=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),m);o.position.set(x,y,z);o.castShadow=o.receiveShadow=sh;(p||S).add(o);return o};
 const cyl=(p,r1,r2,l,m,x,y,z,ax=1)=>{const g=new THREE.CylinderGeometry(r1,r2,l,16);if(ax)g.rotateX(Math.PI/2);const o=new THREE.Mesh(g,m);o.position.set(x,y,z);p.add(o);return o};
 // lights
 S.add(new THREE.HemisphereLight(0xffd9a8,0x7a4a2a,.75));
 const sun=new THREE.DirectionalLight(0xffc27a,2.1);sun.position.set(-20,15,-8);sun.target.position.set(0,0,-20);S.add(sun,sun.target);
-sun.castShadow=true;sun.shadow.mapSize.set(2048,2048);Object.assign(sun.shadow.camera,{left:-38,right:38,top:38,bottom:-38,near:1,far:90});sun.shadow.bias=-.0004;sun.shadow.camera.updateProjectionMatrix();
+sun.castShadow=!SAFE;sun.shadow.mapSize.set(2048,2048);Object.assign(sun.shadow.camera,{left:-38,right:38,top:38,bottom:-38,near:1,far:90});sun.shadow.bias=-.0004;sun.shadow.camera.updateProjectionMatrix();
 const sunB=new THREE.Mesh(new THREE.SphereGeometry(7,24,16),new THREE.MeshBasicMaterial({color:0xfff1c8,fog:false}));sunB.position.set(-50,20,-200);S.add(sunB);
 // world
 const dirt=ctex(256,256,g=>{g.fillStyle='#b8885a';g.fillRect(0,0,256,256);for(let i=0;i<3000;i++){g.fillStyle=`rgba(${60+rnd()*90|0},${40+rnd()*50|0},20,.22)`;g.fillRect(rnd()*256,rnd()*256,2+rnd()*3,2)}},70);
-const gr=new THREE.Mesh(new THREE.PlaneGeometry(600,600),new THREE.MeshStandardMaterial({map:dirt,roughness:1}));gr.rotation.x=-Math.PI/2;gr.receiveShadow=true;S.add(gr);
+const gr=new THREE.Mesh(new THREE.PlaneGeometry(600,600),new SM(SAFE?{map:dirt}:{map:dirt,roughness:1}));gr.rotation.x=-Math.PI/2;gr.receiveShadow=true;S.add(gr);
 const wt=ctex(256,256,g=>{g.fillStyle='#8a6038';g.fillRect(0,0,256,256);for(let i=0;i<256;i+=32){g.fillStyle='#0004';g.fillRect(0,i,256,3)}for(let i=0;i<500;i++){g.fillStyle='rgba(40,20,5,.14)';g.fillRect(rnd()*256,rnd()*256,34,1)}},2);
 const tints=[0xe0bf94,0xc29468,0xd1a67e,0xa8825c,0xe6cfa8],dark=M(0x3a2414),glass=M(0x2a2018,{roughness:.2,metalness:.3});
 for(const sd of[-1,1]){let z=-4;for(let i=0;i<7;i++){const w=7+rnd()*3,h=4.6+rnd()*2,d=7+rnd()*3,x=sd*(6.5+w/2),mat=M(tints[(i+(sd>0?2:0))%5],{map:wt}),cz=z-d/2;
@@ -72,7 +76,7 @@ for(const sd of[-1,1]){let z=-4;for(let i=0;i<7;i++){const w=7+rnd()*3,h=4.6+rnd
  z-=d+1.2}}
 for(const x of[-90,-25,70])box(46,16+rnd()*8,22,M(0xb5683f),x,10,-215);
 box(5,.12,.12,dark,-3.5,.9,-9);box(.14,1,.14,dark,-5.5,.5,-9);box(.14,1,.14,dark,-1.5,.5,-9);
-const tw=new THREE.Mesh(new THREE.IcosahedronGeometry(.4,1),new THREE.MeshStandardMaterial({color:0x8a6a3a,wireframe:true}));S.add(tw);
+const tw=new THREE.Mesh(new THREE.IcosahedronGeometry(.4,1),new SM({color:0x8a6a3a,wireframe:true}));S.add(tw);
 const dust=new THREE.BufferGeometry(),dp=new Float32Array(900);for(let i=0;i<900;i+=3){dp[i]=(rnd()-.5)*16;dp[i+1]=rnd()*5;dp[i+2]=-rnd()*22}
 dust.setAttribute('position',new THREE.BufferAttribute(dp,3));S.add(new THREE.Points(dust,new THREE.PointsMaterial({size:.05,color:0xffe3b0,transparent:true,opacity:.6,depthWrite:false})));
 // target dummy
@@ -145,8 +149,8 @@ function fire(){st='fire';t=0;const hold=tAim,sp=.04+.22*Math.max(0,1-hold/.7),g
   stats(`LAST &nbsp;${tot.toFixed(3)} s<br>`);hint(KEY,'HOLSTER');st='done';t=0},650)}
 function holst(){st='holster';t=0;$('#ret').className='';$('#big').className='';$('#sub').className='';hint(KEY,'DRAW',0)}
 // loop
-function loop(){requestAnimationFrame(loop);try{upd()}catch(e){if(!loop.e){loop.e=1;showErr('Frame error: '+e.message+' '+((e.stack||'').split('\n')[1]||''))}}R.render(S,cam);dbg()}
-function dbg(){dbg.n=(dbg.n||0)+1;if(dbg.n%20==1)$('#dbg').textContent='build 3P-3 | three r'+THREE.REVISION+' | frame '+dbg.n+' | draws '+R.info.render.calls+' | cam '+cam.position.toArray().map(v=>v.toFixed(1)).join(',')}
+function loop(){requestAnimationFrame(loop);try{upd()}catch(e){if(!loop.e){loop.e=1;showErr('Frame error: '+e.message+' '+((e.stack||'').split('\n')[1]||''));goSafe('frame error')}}R.render(S,cam);dbg()}
+function dbg(){dbg.n=(dbg.n||0)+1;if(dbg.n===45&&R.info.render.calls<5)goSafe('nothing was drawn');if(dbg.n%20==1)$('#dbg').textContent='build 3P-4'+(SAFE?' SAFE':'')+' | three r'+THREE.REVISION+' | frame '+dbg.n+' | draws '+R.info.render.calls+' | cam '+cam.position.toArray().map(v=>v.toFixed(1)).join(',')}
 function upd(){const dt=Math.min(clock.getDelta(),.05),tm=clock.elapsedTime;t+=dt;let u=0,gp=0;
  if(st==='draw'){gp=eo(cl01(t/.12));const p=cl01((t-.1)/.34);u=bo(p);if(p>=1){st='aim';tAim=0;drawT=(performance.now()-tPress)/1000;$('#ret').className='on';if(queue)fire()}}
  else if(st==='aim'||st==='fire'||st==='done'){u=1;gp=1;if(st==='aim')tAim+=dt}
